@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gemini 2.5 Flash 风格化 & 幻灯片视频（OpenRouter，本地H5）</title>
+  <style>
+    :root{--bg:#0f172a;--panel:#111827;--text:#e5e7eb;--muted:#9ca3af;--accent:#22d3ee;--ok:#22c55e;--warn:#f59e0b;--err:#ef4444;--card:#0b1220}
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b1020,#0b1329 40%,#0a0f1a);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto}
+    header{padding:20px 16px 8px;display:flex;justify-content:space-between;align-items:center}
+    h1{font-size:18px;margin:0} a{color:var(--accent)}
+    .wrap{max-width:1000px;margin:0 auto;padding:12px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .card{background:radial-gradient(1200px 400px at -10% -10%,rgba(34,211,238,.1),transparent 40%),radial-gradient(1200px 400px at 110% 110%,rgba(34,197,94,.08),transparent 40%),var(--card);border:1px solid rgba(255,255,255,.06);border-radius:16px;box-shadow:0 6px 22px rgba(0,0,0,.35)}
+    .card h2{font-size:16px;margin:0;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.06)}
+    .card .body{padding:14px 16px}
+    label{display:block;margin:.5rem 0 .25rem;color:var(--muted)}
+    input[type=text],input[type=password],select,button{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:#0b1120;color:var(--text)}
+    input[type=file]{border:1px dashed rgba(255,255,255,.25);padding:16px;border-radius:12px;width:100%;background:#0b1120;color:var(--muted)}
+    button{cursor:pointer;background:linear-gradient(90deg,#22d3ee,#22c55e);border:none;color:#02111a;font-weight:700;letter-spacing:.2px}
+    button[disabled]{filter:grayscale(1);opacity:.55;cursor:not-allowed}
+    .row{display:flex;gap:10px;align-items:center}
+    .muted{color:var(--muted)}
+    .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.1);background:#0b1120;border-radius:999px;padding:6px 10px;margin:4px 6px 0 0;font-size:12px}
+    .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+    .thumb{position:relative;background:#000;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.1)}
+    .thumb img{display:block;width:100%;height:160px;object-fit:cover}
+    .thumb a{position:absolute;left:8px;right:8px;bottom:8px;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);padding:6px 8px;border-radius:8px;text-align:center;border:1px solid rgba(255,255,255,.2)}
+    .log{max-height:220px;overflow:auto;background:#0b1120;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px}
+    .ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)}
+    progress{width:100%;height:14px}
+    footer{padding:20px 16px;color:var(--muted);text-align:center}
+    .tiny{font-size:12px}
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <h1>Gemini 2.5 Flash 本地风格化 & 幻灯片视频（OpenRouter）</h1>
+    <div class="tiny">纯前端本地运行 · API 直连 OpenRouter · 密钥不保存，每次手动输入</div>
+  </header>
+
+  <main class="wrap grid">
+    <!-- 左：设置与操作 -->
+    <section class="card">
+      <h2>1) 配置 & 生成</h2>
+      <div class="body">
+        <label>OpenRouter API Key（不会保存）</label>
+        <input id="apiKey" type="password" placeholder="sk-or-v1-..." />
+
+        <label style="margin-top:10px">上传原图（建议 ≤ 2K 分辨率，JPG/PNG）</label>
+        <input id="inputImage" type="file" accept="image/*" />
+
+        <label style="margin-top:10px">风格选择</label>
+        <div class="tiny muted">将从内置风格库中<span style="font-weight:700;color:#e5e7eb">随机选择 10 个不重复</span>的风格进行生成。</div>
+
+        <label style="margin-top:10px">选择本地背景音乐（可选）</label>
+        <input id="bgmFile" type="file" accept="audio/mpeg,audio/mp3,audio/*" />
+        <div class="tiny muted">未选择则尝试同目录 <b>bgm.mp3</b>。如以 <code>file://</code> 打开页面，音频可能被 CORS 拦截，建议选择本地 MP3 或用本地服务器（如 http://localhost）。</div>
+
+        <div style="margin-top:14px" class="row">
+          <button id="startBtn">开始生成（10 张）并合成 10 秒视频</button>
+        </div>
+
+        <div style="margin-top:14px">
+          <label>进度</label>
+          <progress id="prog" value="0" max="100"></progress>
+          <div id="log" class="log tiny" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右：结果预览 -->
+    <section class="card">
+      <h2>2) 结果 & 下载</h2>
+      <div class="body">
+        <div style="margin-bottom:12px">
+          <div class="muted tiny">原图预览</div>
+          <div class="thumb" style="height:220px">
+            <img id="origPreview" alt="原图预览" style="height:220px;object-fit:contain;background:#000" />
+          </div>
+        </div>
+        <div>
+          <div class="muted tiny">10 张风格化图片</div>
+          <div id="gallery" class="gallery"></div>
+        </div>
+        <div style="margin-top:12px">
+          <div class="muted tiny">合成视频（10s，30fps，WebM + Opus）</div>
+          <video id="videoOut" controls playsinline style="width:100%;border-radius:12px;border:1px solid rgba(255,255,255,.1)"></video>
+          <div class="row" style="margin-top:8px">
+            <a id="dlVideo" class="pill" download="stylized_slideshow.webm">下载视频</a>
+            <a id="dlOrig" class="pill" download="original.jpg">下载原图</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="tiny">视频 <b>11 秒</b>（每张 1s，含 0.2s 擦除过渡）。视频已包含：<b>原图 + 10 张风格图（共 11 张）</b>。生成的 10 张风格图均可单独下载。</div>
+  </footer>
+
+  <audio id="bgm" src="bgm.mp3"></audio>
+  <canvas id="stage" width="1280" height="720" style="display:none"></canvas>
+
+<script>
+(function(){
+  const MODEL_ID = 'google/gemini-2.5-flash-image-preview:free';
+  const STYLES = [
+    '哥特暗黑','Big-head cartoon','Vaporwave','Airbrush Art','Sumi-e / Ink Wash Painting','Linocut / Woodcut','Psychedelic Art','Pre-Raphaelite Brotherhood','Tenebrism / Chiaroscuro','Russian Constructivism','赛博朋克','Vienna Secession','Art Nouveau','80\'s Anime Grill','白色的雕塑','Bauhaus Style','自由发挥','多种荧光色','Jackson Pollock','Double Exposure','roy lichtenstein','Fauvism','美式漫画','赛璐璐动画','浮世绘','Takeda Hiromitsu','Flat Color','黑白动漫线稿','新海诚','JOJO奇妙冒险','吉卜力'
+  ];
+
+  const USE_ORIGINAL_IN_VIDEO = true;
+  const SLIDE_COUNT = 10;
+  const FPS = 30;
+  const TOTAL_SECONDS = 11;
+  const PER_SLIDE_MS = 1000;
+  const TRANSITION_MS = 200;
+  const CANVAS_W = 1280, CANVAS_H = 720;
+
+  // 新增：请求启动间隔（毫秒）与 429 重试
+  const RATE_DELAY_MS = 1200; // 每次真正发起请求之间至少间隔 1.2s（可自行调整）
+  const MAX_RETRY_429 = 3;    // 429 时最多重试 3 次（指数退避 + 抖动）
+
+  const el = (id)=>document.getElementById(id);
+  const apiKeyInput = el('apiKey');
+  const inputImage = el('inputImage');
+  const startBtn = el('startBtn');
+  const logBox = el('log');
+  const prog = el('prog');
+  const gallery = el('gallery');
+  const origPreview = el('origPreview');
+  const videoOut = el('videoOut');
+  const dlVideo = el('dlVideo');
+  const dlOrig = el('dlOrig');
+  const stage = el('stage');
+  const bgm = el('bgm');
+  const bgmFile = el('bgmFile');
+  const ctx = stage.getContext('2d');
+
+  stage.width = CANVAS_W; stage.height = CANVAS_H;
+
+  inputImage.onchange = async ()=>{
+    const f = inputImage.files?.[0];
+    if(!f) return;
+    const dataURL = await fileToDataURL(f);
+    origPreview.src = dataURL;
+    dlOrig.href = dataURL;
+    dlOrig.download = f.name || 'original.jpg';
+  };
+
+  // 允许选择本地 BGM，避免 file:// 场景下的 CORS 拦截
+  if(bgmFile){
+    bgmFile.onchange = ()=>{
+      const f = bgmFile.files?.[0];
+      if(!f) return;
+      const url = URL.createObjectURL(f);
+      bgm.src = url;
+      toast('🎵 已加载本地 BGM（blob: URL，无需 CORS）','ok');
+    };
+  }
+
+  startBtn.onclick = async ()=>{
+    if(startBtn.disabled) return; // 防抖
+    try{
+      startBtn.disabled = true;
+      const originalText = startBtn.textContent;
+      startBtn.textContent = '正在生成…';
+
+      gallery.innerHTML = '';
+      videoOut.removeAttribute('src'); videoOut.load();
+      dlVideo.removeAttribute('href');
+      prog.value = 0; logBox.innerHTML = '';
+
+      const apiKey = apiKeyInput.value.trim();
+      if(!apiKey) throw new Error('请先填写 OpenRouter API Key');
+      const f = inputImage.files?.[0];
+      if(!f) throw new Error('请先上传一张原图');
+
+      if(location.protocol === 'file:' && !bgmFile?.files?.[0]){
+        toast('ℹ️ 当前为 file:// 打开，若音频受限请选择本地 BGM 或用本地服务器','warn');
+      }
+
+      const srcDataURL = await fileToDataURL(f);
+      origPreview.src = srcDataURL;
+
+      // 随机选择 10 个不重复风格
+      const selected = shuffle([...STYLES]).slice(0, SLIDE_COUNT);
+      // 带最小启动间隔的并发控制：使用 pLimit(2) + rateGate() 保证每次“开始请求”的时间至少相隔 RATE_DELAY_MS
+      const limiter = pLimit(2);
+      let done = 0; prog.value = 0;
+      const tasks = selected.map((style,idx)=> limiter(async ()=>{
+        await rateGate();
+        const prompt = `保持构图不变，保持人物位置不变(非常重要！！！)，把图片变成${style}风格，注意要同时修改人物的面部为对应的风格，风格改变要非常明显。`;
+        try{
+          const imgDataUrl = await callOpenRouterImageEdit({apiKey, model: MODEL_ID, prompt, imageDataURL: srcDataURL});
+          done++; prog.value = Math.round(done/(SLIDE_COUNT)*60);
+          addThumb(imgDataUrl, idx, style);
+          return {style, dataURL: imgDataUrl};
+        }catch(e){
+          toast(`⚠️ 第${idx+1}张生成失败：${e?.message||e}`,'warn');
+          return null; // 不中断流程
+        }
+      }));
+
+      const results = await Promise.all(tasks);
+      const ok = results.filter(r => r && r.dataURL);
+      if(ok.length === 0) throw new Error('全部图片生成失败，请重试或稍后再试');
+
+      // 将成功的结果凑满到 10 张（若不足则用最后一张补齐）
+      let stylized = ok.map(r=>r.dataURL);
+      if(stylized.length < SLIDE_COUNT){
+        const need = SLIDE_COUNT - stylized.length;
+        const fill = new Array(need).fill(stylized[stylized.length-1] || stylized[0]);
+        stylized = stylized.concat(fill);
+        toast(`⚠️ 仅成功 ${ok.length} 张，已自动补齐到 ${SLIDE_COUNT} 张并继续合成视频`,'warn');
+      }
+
+      toast('🎞️ 开始合成视频（带 BGM）…');
+      const frames = USE_ORIGINAL_IN_VIDEO ? [srcDataURL, ...stylized] : stylized;
+      const videoBlob = await renderSlideshowVideo(frames, {fps: FPS, totalSeconds: TOTAL_SECONDS, perSlideMs: PER_SLIDE_MS, transitionMs: TRANSITION_MS});
+      const vurl = URL.createObjectURL(videoBlob);
+      videoOut.src = vurl; videoOut.load();
+      dlVideo.href = vurl;
+      prog.value = 100;
+      toast('✅ 完成！可下载 10 张风格图与合成视频。','ok');
+
+      startBtn.textContent = originalText;
+      startBtn.disabled = false;
+    }catch(err){
+      console.error(err);
+      toast('❌ '+(err?.message||String(err)),'err');
+      startBtn.textContent = '开始生成（10 张）并合成 10 秒视频';
+      startBtn.disabled = false; // 失败也恢复
+    }
+  };
+
+  // === 速率门控（保证请求启动间隔） ===
+  let nextStart = 0;
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  async function rateGate(){
+    const now = Date.now();
+    const wait = Math.max(0, nextStart - now);
+    if(wait > 0) await sleep(wait);
+    nextStart = Math.max(now, nextStart) + RATE_DELAY_MS;
+  }
+
+  // === 工具函数 ===
+  function addThumb(dataURL, idx, style){
+    const wrap = document.createElement('div'); wrap.className='thumb';
+    const img = new Image(); img.src = dataURL; img.alt = style; img.loading='lazy';
+    wrap.appendChild(img);
+    const a = document.createElement('a'); a.textContent = `下载 #${idx+1}`; a.download = `stylized_${String(idx+1).padStart(2,'0')}.png`; a.href = dataURL; wrap.appendChild(a);
+    gallery.appendChild(wrap);
+  }
+  function toast(msg,type){
+    const line = document.createElement('div');
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    if(type==='ok') line.classList.add('ok');
+    else if(type==='warn') line.classList.add('warn');
+    else if(type==='err') line.classList.add('err');
+    logBox.appendChild(line); logBox.scrollTop = logBox.scrollHeight;
+  }
+  function shuffle(a){
+    for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a;
+  }
+  function pLimit(n){
+    const queue=[]; let active=0;
+    const next=()=>{ if(active>=n||queue.length===0) return; active++; const {fn,resolve,reject}=queue.shift(); fn().then(v=>{active--;resolve(v);next();}).catch(e=>{active--;reject(e);next();}); };
+    return fn=> new Promise((resolve,reject)=>{ queue.push({fn,resolve,reject}); next(); });
+  }
+  async function fileToDataURL(file){
+    const buf = await file.arrayBuffer();
+    const b64 = arrayBufferToBase64(buf);
+    return `data:${file.type||'image/png'};base64,${b64}`;
+  }
+  function arrayBufferToBase64(buffer){
+    let binary=''; const bytes=new Uint8Array(buffer); const len=bytes.byteLength;
+    for(let i=0;i<len;i++){ binary+=String.fromCharCode(bytes[i]); }
+    return btoa(binary);
+  }
+
+  // === OpenRouter 调用（含 429 重试） ===
+  async function callOpenRouterImageEdit(args, attempt=0){
+    const {apiKey, model, prompt, imageDataURL} = args;
+    const headers = {
+      'Authorization': 'Bearer '+apiKey,
+      'Content-Type': 'application/json'
+    };
+    const body = { model, messages: [ { role: 'user', content: [ { type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageDataURL } } ] } ] };
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers, body: JSON.stringify(body) });
+
+    if(res.status === 429){
+      if(attempt >= MAX_RETRY_429) throw new Error('触发速率限制（429），重试次数已达上限');
+      const backoff = Math.min(2000 * Math.pow(2, attempt), 8000) + Math.random()*400; // 2s,4s,8s + 抖动
+      toast(`⏳ 速率限制，${Math.round(backoff)}ms 后重试（第 ${attempt+1} 次）…`,'warn');
+      await sleep(backoff);
+      return callOpenRouterImageEdit(args, attempt+1);
+    }
+
+    if(!res.ok){
+      const t = await res.text().catch(()=> '');
+      throw new Error('OpenRouter 错误：'+res.status+' '+t);
+    }
+
+    const data = await res.json();
+    const url = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    if(url && /^data:image\//.test(url)) return url;
+    const alt = deepFindDataURL(data); if(alt) return alt;
+    throw new Error('未获取到生成图片的 data URL');
+  }
+  function deepFindDataURL(obj){
+    try{ const s = JSON.stringify(obj); const m = s.match(/data:image\/(?:png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+/); return m ? m[0] : null; }catch{ return null; }
+  }
+
+  // 更稳健地从 OpenRouter 响应中提取 data URL（兼容多种结构）
+  function extractDataURLFromOpenRouter(data){
+    try{
+      const msg = data?.choices?.[0]?.message;
+      // 1) 官方示例：message.images[0].image_url.url
+      const viaImages = msg?.images?.[0]?.image_url?.url;
+      if(typeof viaImages === 'string' && viaImages.startsWith('data:image/')) return viaImages;
+      // 2) content 为数组时，可能嵌入 image_url / image_base64
+      if(Array.isArray(msg?.content)){
+        for(const part of msg.content){
+          if(part?.image_url?.url && String(part.image_url.url).startsWith('data:image/')) return part.image_url.url;
+          if(typeof part?.url === 'string' && part.url.startsWith('data:image/')) return part.url;
+          if(part?.image_base64){ return 'data:image/png;base64,'+part.image_base64; }
+        }
+      }
+      // 3) 兜底：全文扫描 base64 data URL
+      const alt = deepFindDataURL(data); if(alt) return alt;
+      return null;
+    }catch{ return null; }
+  }
+
+  // === 幻灯片视频合成 ===
+  async function renderSlideshowVideo(frameDataURLs, {fps, totalSeconds, perSlideMs, transitionMs}){
+    const videoStream = stage.captureStream(fps);
+    bgm.loop = true;
+    let audioStream = null;
+    try{
+      if(bgm.src){
+        await bgm.play();
+        audioStream = (bgm.captureStream && bgm.captureStream()) ? bgm.captureStream() : null;
+      }
+    }catch(e){ toast('⚠️ 音频播放被拦截或加载失败，将导出无音轨视频','warn'); }
+    const combined = audioStream ? new MediaStream([videoStream.getVideoTracks()[0], ...audioStream.getAudioTracks()]) : videoStream;
+    
+
+    const mime = selectSupportedMime();
+    const rec = new MediaRecorder(combined, {mimeType: mime||undefined, videoBitsPerSecond: 6_000_000});
+    const chunks=[]; rec.ondataavailable = e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+    const done = new Promise(resolve=>{ rec.onstop=()=> resolve(new Blob(chunks, {type: mime||'video/webm'})); });
+
+    rec.start();
+    await animateSlides(frameDataURLs, {fps, totalSeconds, perSlideMs, transitionMs});
+    rec.stop(); if(audioStream){ bgm.pause(); bgm.currentTime = 0; }
+    return await done;
+  }
+  function selectSupportedMime(){
+    const cands = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+    for(const m of cands){ if(MediaRecorder.isTypeSupported(m)) return m; } return '';
+  }
+  async function animateSlides(frameURLs, {fps, totalSeconds, perSlideMs, transitionMs}){
+    const imgs = await Promise.all(frameURLs.map(loadImage));
+    const frameTotal = Math.round(totalSeconds * fps);
+    const frameDur = 1000 / fps; const slides = imgs.length;
+    const startTime = performance.now(); let lastDrawn = -1;
+
+    return new Promise(resolve=>{
+      const loop = (now)=>{
+        const elapsed = now - startTime; const t = Math.min(elapsed, totalSeconds*1000);
+        const frameIndex = Math.floor(t / frameDur);
+        if(frameIndex === lastDrawn){ requestAnimationFrame(loop); return; }
+        lastDrawn = frameIndex;
+
+        const currentSlide = Math.min(Math.floor(t / perSlideMs), slides-1);
+        const slideStart = currentSlide * perSlideMs; const within = t - slideStart;
+        const transition = Math.max(0, within - (perSlideMs - transitionMs));
+        const progress = Math.min(1, transition / transitionMs);
+        const directionLeft = (currentSlide % 2 === 0);
+
+        ctx.fillStyle = '#000'; ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+        drawContain(ctx, imgs[currentSlide], CANVAS_W, CANVAS_H);
+        if(currentSlide < slides-1 && progress > 0){
+          ctx.save(); const w = Math.floor(CANVAS_W * progress);
+          if(directionLeft){ ctx.beginPath(); ctx.rect(CANVAS_W - w, 0, w, CANVAS_H); ctx.clip(); }
+          else { ctx.beginPath(); ctx.rect(0, 0, w, CANVAS_H); ctx.clip(); }
+          drawContain(ctx, imgs[currentSlide+1], CANVAS_W, CANVAS_H); ctx.restore();
+        }
+        if(frameIndex < frameTotal){ requestAnimationFrame(loop); } else { resolve(); }
+      }; requestAnimationFrame(loop);
+    });
+  }
+  function drawContain(ctx, img, W, H){
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    const r = Math.min(W/iw, H/ih); const nw = Math.round(iw*r), nh = Math.round(ih*r);
+    const x = Math.floor((W-nw)/2), y = Math.floor((H-nh)/2);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, x, y, nw, nh);
+  }
+  function loadImage(url){
+    return new Promise((resolve,reject)=>{ const im=new Image(); im.onload=()=>resolve(im); im.onerror=()=>reject(new Error('图片加载失败')); im.src=url; });
+  }
+})();
+</script>
+</body>
+</html>
